@@ -310,11 +310,15 @@ void AeroRes(
                            // corrections
         Wcoeff = param[31], //
 
+	//new parameter added for windspeed
+        Zw = param[32], // Nominal meas. height for wind speed
+
         Cc   = sitev[4], // Canopy Cover
         Hcan = sitev[5], // Canopy height
         LAI  = sitev[6]; // Leaf Area Index
 
-    Zm  = Hcan + z; // observed wind speed above the canopy
+    //Zm  = Hcan + z; // observed wind speed above the canopy
+    Zm  = Hcan + Zw; // observed wind speed above the canopy
     LAI = Cc * LAI;
     if (V <= 0) {
         Ra     = 0.0;
@@ -332,8 +336,16 @@ void AeroRes(
         if (LAI == 0) // For open area
         {
             Vz  = V;
-            Rbc = (1.0 / (pow(K_vc, 2) * Vz) * pow((log(z / zo)), 2.0)) * 1 /
+            //Rbc = (1.0 / (pow(K_vc, 2) * Vz) * pow((log(z / zo)), 2.0)) * 1 /
+	    //we use windspeed height (Zw) instead of temperature height (z) here
+            Rbc = (1.0 / (pow(K_vc, 2) * Vz) * pow((log(Zw / zo)), 2.0)) * 1 /
                   Hs_f; // sub layer snow resistance; Hs_f: to convert resistance second to hour
+	    //this is the eq. 29 in 
+	    //Mahat, V., D. G. Tarboton, and N. P. Molotch (2013), 
+	    //Testing above- and below-canopy representations of turbulent 
+	    //fluxes in an energy balance snowmelt model, 
+	    //Water Resour. Res., 49, doi:10.1002/wrcr.20073.
+	    //z is Nominal meas. height for air temp. and humidity [2m], 
             Ri = Gra_v * (Ta - Tss) * z / (pow(Vz, 2.0) * (0.5 * (Ta + Tss) + 273.15));
             if (Ri > Rimax)
                 Ri = Rimax;
@@ -357,9 +369,13 @@ void AeroRes(
                  1 / Hs_f; // Increased ten times (Calder 1990, Lundberg and Halldin 1994)
             //        Below canopy aerodynamic resistance
             Rc = (Hcan * exp(ndecay) / (Kh * ndecay) *
-                  (exp(-ndecay * z / Hcan) - exp(-ndecay * (d + Z0c) / Hcan))) *
+                  //(exp(-ndecay * z / Hcan) - exp(-ndecay * (d + Z0c) / Hcan))) *
+		  //should use windspeed height, Zw
+                  (exp(-ndecay * Zw / Hcan) - exp(-ndecay * (d + Z0c) / Hcan))) *
                  1 / Hs_f;
-            Rs = (1.0 / (pow(K_vc, 2) * Vz) * pow((log(z / zo)), 2.0)) * 1 / Hs_f;
+            //Rs = (1.0 / (pow(K_vc, 2) * Vz) * pow((log(z / zo)), 2.0)) * 1 / Hs_f;
+  	    //should use windspeed height, Zw
+            Rs = (1.0 / (pow(K_vc, 2) * Vz) * pow((log(Zw / zo)), 2.0)) * 1 / Hs_f;
             Rc = Rc + Rs; // Total below canopy resistance
             //        Bulk aerodynamic resistance (used when there is no snow in the canopy)
             Rbc = Rc + Ra; // Total aerodynamic resistance from ground to above canopy used when
@@ -371,6 +387,13 @@ void AeroRes(
             Rl     = 1 / (LAI * Lbmean) * 1 / Hs_f;
             //        Leaf boundary layer conductance: reciprocal of resistance
             RKINl = 1.0 / Rl;
+
+	    //this is the eq. 29 in 
+	    //Mahat, V., D. G. Tarboton, and N. P. Molotch (2013), 
+	    //Testing above- and below-canopy representations of turbulent 
+	    //fluxes in an energy balance snowmelt model, 
+	    //Water Resour. Res., 49, doi:10.1002/wrcr.20073.
+	    //z is Nominal meas. height for air temp. and humidity [2m], 
             //      Correction for Ra, Rc and Rac for stable and unstable condition
             Ri = Gra_v * (Ta - Tss) * z /
                  (pow(Vz, 2.0) * (0.5 * (Ta + Tss) + 273.15)
@@ -422,7 +445,10 @@ void WINDTRANab(
     float &Vc
 ) // Out put wind speed within canopy at height 2 m
 {
-    float Z    = param[4], //  Nominal meas. height for air temp. and humidity [2m],
+    //float Z    = param[4], //  Nominal meas. height for air temp. and humidity [2m],
+    //
+                             //Now we use the new parameter Zw, which is param[32], for windspeed height, 
+    float Z    = param[32], //  Nominal meas. height for windspeed [2m], 
         Wcoeff = param[31], //
 
         Cc    = sitev[4], // Canopy Cover

@@ -5,7 +5,7 @@
 #include <map>
 #include <string>
 
-#define NPARS 32
+#define NPARS 33
 
 namespace ueb {
 class Parameters;

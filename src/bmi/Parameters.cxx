@@ -58,7 +58,10 @@ std::array<float, NPARS> ueb::Parameters::getParams() const {
     Param[18] = -9999;
     Param[19] = -9999;
     Param[20] = _parArray[19];
-    for (int i = 22; i < 32; i++) Param[i] = _parArray[i - 2];
+    for (int i = 22; i < NPARS - 1; i++) Param[i] = _parArray[i - 2];
+
+    //set the Zw, nominal height of windspeed
+    Param[32] = _parArray[32];
 
     return Param;
 }
@@ -102,6 +105,7 @@ rimax:  Maximum value of Richardson number for stability correction
 wcoeff: Wind decay coefficient for the forest
 a: A in Bristow-Campbell formula for atmospheric transmittance
 c: C in Bristow-Campbell formula for atmospheric transmittance
+Zw: Nominal meas. heights for windspeed, default to 2 m
 *
 */
 const std::array<std::string, NPARS> ueb::Parameters::parameter_names{
@@ -139,6 +143,7 @@ const std::array<std::string, NPARS> ueb::Parameters::parameter_names{
     "wcoeff", // Wind decay coefficient for the forest
     "a", // A in Bristow-Campbell formula for atmospheric transmittance
     "c", // C in Bristow-Campbell formula for atmospheric transmittance
+    "Zw", //Nominal meas. heights for windspeed, defaults to 2 m
 };
 
 const std::map<std::string, std::string> ueb::Parameters::parameter_units{
@@ -177,7 +182,8 @@ const std::map<std::string, std::string> ueb::Parameters::parameter_units{
     {"rimax",             "1"                }, //  Maximum value of Richardson number for stability correction
     {"wcoeff",            "1"                }, // Wind decay coefficient for the forest
     {"a",                 "1"                }, // A in Bristow-Campbell formula for atmospheric transmittance
-    {"c",                 "1"                }  // C in Bristow-Campbell formula for atmospheric transmittance
+    {"c",                 "1"                },  // C in Bristow-Campbell formula for atmospheric transmittance
+    {"Zw",                "m"                } // Nominal meas. heights for windspeed, defaults to 2 m
 };
 
 std::ostream& operator<<(std::ostream& os, ueb::Parameters p) { // operator<<
