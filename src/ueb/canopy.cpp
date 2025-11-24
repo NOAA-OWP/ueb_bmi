@@ -448,7 +448,7 @@ void WINDTRANab(
     //float Z    = param[4], //  Nominal meas. height for air temp. and humidity [2m],
     //
                              //Now we use the new parameter Zw, which is param[32], for windspeed height, 
-    float Z    = param[32], //  Nominal meas. height for windspeed [2m], 
+    float Z    = param[32], //  Nominal meas. height for windspeed 
         Wcoeff = param[31], //
 
         Cc    = sitev[4], // Canopy Cover
