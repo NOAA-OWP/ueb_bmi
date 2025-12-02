@@ -251,7 +251,7 @@ int ueb::ControlFile::getModelTotalTimeSteps() const {
     // model time steps
     int numTotalTs = (int)ceil(modelSpan * (24 / modelDT));
 
-    return numTotalTs;
+    return numTotalTs + 1; // add one to account for the end time being included in the calculations
 }
 
 int ueb::ControlFile::getInpDailyorSubdaily() {
