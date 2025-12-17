@@ -418,3 +418,7 @@ std::string Logger::CreateTimestamp(bool appendMS, bool iso) {
 std::string Logger::GetLogFilePath() {
     return logFilePath;
 }
+
+LogLevel Logger::GetLogLevel(void) {
+    return logLevel;
+} 
