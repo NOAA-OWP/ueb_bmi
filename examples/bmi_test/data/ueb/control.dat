@@ -1,0 +1,15 @@
+UEBGrid Model Driver Test for TWDEF
+./data/ueb/param.dat
+./data/ueb/siteinitial.dat
+./data/ueb/inputcontrol.dat
+./data/ueb/outputcontrol.dat
+./data/ueb/aggout.nc 
+./data/ueb/watershed_onecell.nc
+watershed y x
+2015 12 01 0.0    
+2015 12 30 23.0    
+1.0
+0
+0
+1 15 16
+1 1
