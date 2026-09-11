@@ -1,9 +1,17 @@
+#
+# ngen/extern/ueb-bmi CMakeLists.txt
+#
+
 cmake_minimum_required(VERSION 3.0)
 
 project (bmi-ueb-cxx CXX)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+option(UEB_SUPPRESS_OUTPUTS "Build where UEB BMI's Finalize() will not create outputs" OFF)
+
+option(USE_EWTS "Build UEB BMI with EWTS logging" ON)
 
 # -----------------------------------------------------------------------------
 # Find the Boost library and configure usage
@@ -32,6 +40,11 @@ else()
    include_directories(${BMICXX_INCLUDE_DIRS} ${NETCDF_C_INCLUDE_DIR})
    link_directories(  ${NETCDF_C_LIB_DIR} )
 
+endif()
+
+if(UEB_SUPPRESS_OUTPUTS)
+    message("-- UEB compiled to not create its own outputs")
+    add_compile_definitions(UEB_SUPPRESS_OUTPUTS)
 endif()
 
 link_libraries(Boost::serialization)

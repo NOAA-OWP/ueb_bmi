@@ -108,6 +108,15 @@ class BmiUEB : public bmi::Bmi {
     OutControl _outcontrol;
 
     double _currentModelDateTime; // this is Julian date in days
+    double realization_start_time = -1;
+    double realization_end_time   = -1;
+    double realization_dt         = -1;
+    bool realization_time_set     = false;
+    double _ngen_realization_start_time = -1.0;
+    double _ngen_realization_end_time   = -1.0;
+    double _ngen_realization_dt         = -1.0;
+
+    bool realization_time_applied = false;
 
     std::vector<std::array<float, nxv>> _statev;
 
@@ -129,11 +138,15 @@ class BmiUEB : public bmi::Bmi {
     void serialize(Archive& ar, const unsigned int version);
     vecbuf<char> m_serialized;
     uint64_t m_serialized_length; // needs stable location for GetValuePtr
-    void load_serialized(const char* data);
+    float _swe_kg_m2;
+    float _swit_mm;
+    void load_serialized(char* data);
     void clear_serialized();
     void new_serialized();
 
     void setStatev();
+
+    void apply_ngen_realization_time();
 
     void prepareInputForPoint(
         double const& UTCHour, // input
@@ -223,9 +236,11 @@ class BmiUEB : public bmi::Bmi {
         float const* OutArr
     ); // array of 53 elements,  input
        //
+#ifndef UEB_SUPPRESS_OUTPUTS
     void outputAggregratedFiles();
     void outputNcFiles();
     void outputPointFiles();
+#endif
     //
     // Get the UEB start time, this is different form the GetStartTime API.
     // The NextGen frameword require the GetStartTime returns 0.
@@ -237,6 +252,15 @@ class BmiUEB : public bmi::Bmi {
     std::array<float, nsv> getSitevForCell(int const& cell);
 
     std::array<float, NSITEVARS> getSiteState(int const& cell);
+
+    // Calculate the index of where loaded data should come from and where results should be saved to based on the current time of the model.
+    int get_istep();
+
+    /**
+     * Set all time properties back to the original time after Initialize has been called.
+     * This is primarily used for resetting valid indexes after loading a hot start state.
+     */
+    void reset_time();
 };
 
 }; // namespace ueb

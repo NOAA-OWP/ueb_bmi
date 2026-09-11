@@ -3082,14 +3082,24 @@ labl11:
             {
                 // if(snowdgtvariteflag == 1)
                 {
-                    snowdgtv_ss << "Bisection canopy temperature solution failed with large range"
-                                << endl;
-                    snowdgtv_ss << "datetime, model element:" << mtime[0] << mtime[1] << mtime[2]
-                                << mtime[3] << "  " << uebCellY << " " << uebCellX
-                                << endl; // mtime[4]<<endl;
-                    snowdgtv_ss << " A canopy temperature of 273 K assumed" << endl;
-                    LOG(snowdgtv_ss.str(), LogLevel::WARNING);
-                    snowdgtv_ss.str("");
+                    static int warned = 0;
+
+                    if (warned == 0) {
+                        snowdgtv_ss << "Bisection canopy temperature solution failed with large range"
+                                    << endl;
+                        snowdgtv_ss << "datetime, model element:" << mtime[0] << mtime[1] << mtime[2]
+                                    << mtime[3] << "  " << uebCellY << " " << uebCellX
+                                    << endl; // mtime[4]<<endl;
+                        snowdgtv_ss << " A canopy temperature of 273 K assumed" << endl;
+                        LOG(snowdgtv_ss.str(), LogLevel::WARNING);
+                        snowdgtv_ss.str("");
+                        warned = 1;
+                    }
+                    else if (warned == 1) {
+                        LOG("Bisection canopy temperature solution failed again; subsequent occurrences of this message will be suppressed.",
+                            LogLevel::WARNING);
+                        warned = 2;
+                    }
                 }
                 Tck = Tk;
                 goto labl10;

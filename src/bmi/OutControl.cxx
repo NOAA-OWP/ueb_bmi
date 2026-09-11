@@ -352,7 +352,9 @@ const std::array<std::string, NOUTPUTS> ueb::OutControl::output_var_names{
     "SWIGM",
     "SWISM",
     "SWIR",
-    "errMB"
+    "errMB",
+    "SWE_kg_m2",
+    "SWIT_mm"
 };
 
 const std::map<std::string, std::string> ueb::OutControl::output_var_units{
@@ -440,7 +442,7 @@ const std::map<std::string, std::string> ueb::OutControl::output_var_units{
                             //(wind and turbulence).	kJ/m2/hr
     {"Es",            "m"          }, //  E	E	Surface sublimation	Amount of water removed
                  // from the snow surface by sublimation	m
-    {"SWIT",          "m hr-1"     }, //  SWIT 	SWIT 	Total outflow 	Total outflow from the
+    {"SWIT",          "m hr-1"    }, //  SWIT 	SWIT 	Total outflow 	Total outflow from the
                         // base of the snowpack (and glacier). This includes rainfall,
                         // melt from seasonal snow and melt from glaciated surface.
                         // m/hr
@@ -639,6 +641,9 @@ const std::map<std::string, std::string> ueb::OutControl::output_var_units{
                     // in the computation.  It is included as a check on the
                     // functioning of the model and if significantly different from
                     // 0 is indicative of a problem.	m
+    {"SWE_kg_m2",     "kg m-2"     },
+    {"SWIT_mm",       "mm"         },
+
 };
 
 std::ostream& operator<<(std::ostream& os, ueb::OutControl const& p) { // operator<<

@@ -597,35 +597,35 @@ void readTextData(const char *inforcFile, float *&tvar_in, int &nrecords);
 //*******************************************************************************
 
 // js  Constant extern float set
-extern float T_0; // Temperature of freezing (0 C)
-extern float T_k; // 273.15;			// Temperature to convert C to K (273.15)
-extern float SB_c; // Stefan boltzman constant (2.041334e-7 KJ/m^2-hr-K^4) #corrected 12.23.14
-extern float H_f; // 333.5;			// Heat of fusion (333.5 KJ;  // kg)
-extern float Hne_u; // 2834.0;		// Heat of Vaporization (Ice to Vapor, 2834 KJ;  // kg)
-extern float C_w; // 4.18;			// Water Heat Capacity (4.18 KJ;  // kg;  // C)
-extern float C_s; // 2.09;			// Ice heat capacity (2.09 KJ;  // kg;  // C)
-extern float C_p; // 1.005;			// Air Heat Capacity (1.005 KJ;  // kg;  // K)
-extern float
+extern const float T_0; // Temperature of freezing (0 C)
+extern const float T_k; // 273.15;			// Temperature to convert C to K (273.15)
+extern const float SB_c; // Stefan boltzman constant (2.041334e-7 KJ/m^2-hr-K^4) #corrected 12.23.14
+extern const float H_f; // 333.5;			// Heat of fusion (333.5 KJ;  // kg)
+extern const float Hne_u; // 2834.0;		// Heat of Vaporization (Ice to Vapor, 2834 KJ;  // kg)
+extern const float C_w; // 4.18;			// Water Heat Capacity (4.18 KJ;  // kg;  // C)
+extern const float C_s; // 2.09;			// Ice heat capacity (2.09 KJ;  // kg;  // C)
+extern const float C_p; // 1.005;			// Air Heat Capacity (1.005 KJ;  // kg;  // K)
+extern const float
     Ra_g; // 287.0;			// Ideal Gas constant for dry air (287 J;  // kg;  // K)
-extern float K_vc; // 0.4;			// Von Karmans constant (0.4)
-extern float Hs_f; // 3600.0;		// Factor to convert ;  // s into ;  // hr (3600)
-extern float Rho_i; // 917.0;			// Density of Ice (917 kg;  // m^3)
-extern float Rho_w; // 1000.0;		// Density of Water (1000 kg;  // m^3)
-extern float Gra_v; // 9.81;			// Gravitational acceleration (9.81 m;  // s^2)
-extern float
+extern const float K_vc; // 0.4;			// Von Karmans constant (0.4)
+extern const float Hs_f; // 3600.0;		// Factor to convert ;  // s into ;  // hr (3600)
+extern const float Rho_i; // 917.0;			// Density of Ice (917 kg;  // m^3)
+extern const float Rho_w; // 1000.0;		// Density of Water (1000 kg;  // m^3)
+extern const float Gra_v; // 9.81;			// Gravitational acceleration (9.81 m;  // s^2)
+extern const float
     W1da_y; // 0.261799;		// Daily frequency (2pi;  // 24 hr 0.261799 radians;  // hr)
-extern float Io; // 4914.0;            //  Solar constant  Kj/m^2/hr
+extern const float Io; // 4914.0;            //  Solar constant  Kj/m^2/hr
 // pi copied from snowdxv.f90
-extern float P_i; // 3.141592653589793238462643383279502884197169399375105820974944592308;
+extern const float P_i; // 3.141592653589793238462643383279502884197169399375105820974944592308;
                   // // Pi
 
 // data for pred-corr
-extern float wtol; // 0.025;
-extern float utol; // 2000.0;
+extern const float wtol; // 0.025;
+extern const float utol; // 2000.0;
 // from TURBFLUX()
-extern float tol; // 0.001;
-extern int nitermax; // 20;
-extern int ncitermax; // 21
+extern const float tol; // 0.001;
+extern const int nitermax; // 20;
+extern const int ncitermax; // 21
 
 // #***^*-flag to write warnings,...etc ###***TBC 9.20.13
 // Global variables ###_TBC 5.6.13

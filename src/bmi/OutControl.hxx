@@ -6,7 +6,7 @@
 #include <map>
 #include <string>
 
-#define NOUTPUTS 70
+#define NOUTPUTS 72
 
 namespace ueb {
 class OutControl;

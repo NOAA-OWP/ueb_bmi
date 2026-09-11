@@ -28,6 +28,8 @@ ueb::ControlFile::~ControlFile() {
 }
 
 void ueb::ControlFile::loadControlFile(std::string const& contrl_file) {
+    _conFilename = contrl_file;
+
     std::stringstream std_ss("");
 
     std_ss << "Control File is " << contrl_file << std::endl;
@@ -308,6 +310,24 @@ int ueb::ControlFile::getStepsInADay() const {
     modelDT         = 24.0 / stepinaDay;
     int nstepinaDay = stepinaDay;
     return nstepinaDay;
+}
+
+void ueb::ControlFile::overrideModelTiming(
+    int startYear, int startMonth, int startDay, double startHour,
+    int endYear, int endMonth, int endDay, double endHour,
+    double dt_hours
+) {
+    if (dt_hours <= 0.0) {
+        throw std::invalid_argument("UEB ControlFile overrideModelTiming received non-positive dt_hours");
+    }
+
+    _ModelStartDate = {startYear, startMonth, startDay};
+    _ModelStartHour = startHour;
+
+    _ModelEndDate = {endYear, endMonth, endDay};
+    _ModelEndHour = endHour;
+
+    _ModelDt = dt_hours;
 }
 
 std::ostream& operator<<(std::ostream& os, ueb::ControlFile f) { // operator<<

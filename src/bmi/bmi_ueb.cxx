@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "Logger.hpp"
 #include "bmi_ueb.hxx"
 #include <bmi.hxx>
 
@@ -13,11 +14,52 @@
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/vector.hpp>
 
+namespace {
+    const auto SERIALIZATION_CREATE = "serialization_create";
+    const auto SERIALIZATION_SIZE = "serialization_size";
+    const auto SERIALIZATION_STATE = "serialization_state";
+    const auto SERIALIZATION_FREE = "serialization_free";
+    const auto RESET_TIME = "reset_time";
+    const auto NGEN_REALIZATION_START_TIME = "ngen_realization_start_time";
+    const auto NGEN_REALIZATION_END_TIME = "ngen_realization_end_time";
+    const auto NGEN_REALIZATION_DT = "ngen_realization_dt";
+}
+
 std::stringstream bmi_ueb_ss("");
 
 void ueb::BmiUEB::Initialize(std::string config_file) {
+
+#ifdef UEB_USE_EWTS    
+    // Initialize the Error and Warning Trapping System
+    #pragma message("ueb-bmi.bmi_ueb.Initialize: UEB_USE_EWTS ON")
+    EwtsInit(UEB_MODULE_ID, true);
+#else
+    #pragma message("ueb-bmi.bmi_ueb.Initialize: UEB_USE_EWTS OFF")
+#endif
+
+    LOG(LogLevel::INFO, "Initializing UEB");
+
     if (config_file.compare("") != 0) {
         _confile = ControlFile(config_file);
+
+        {
+            std::stringstream ts_ss;
+            const auto start_date = _confile.getModelStartDate();
+            const auto end_date   = _confile.getModelEndDate();
+
+            ts_ss << "UEB effective control timing after Initialize load:" << std::endl;
+            ts_ss << "  control file: " << _confile.getControlFile() << std::endl;
+            ts_ss << "  start: "
+                  << start_date[0] << "-" << start_date[1] << "-" << start_date[2]
+                  << " " << _confile.getModelStartHour() << std::endl;
+            ts_ss << "  end:   "
+                  << end_date[0] << "-" << end_date[1] << "-" << end_date[2]
+                  << " " << _confile.getModelEndHour() << std::endl;
+            ts_ss << "  dt_hours: " << _confile.getModelDt() << std::endl;
+            ts_ss << "  total_timesteps: " << _confile.getModelTotalTimeSteps() << std::endl;
+            LOG(ts_ss.str(), LogLevel::INFO);
+        }
+
         _ws      = Watershed(
             _confile.getWatershedFile(),
             _confile.getWsvarName(),
@@ -28,7 +70,6 @@ void ueb::BmiUEB::Initialize(std::string config_file) {
         _sitevars = SiteVariables(_confile.getSitevarFile());
         _forcings = ForcingVariables(
             _confile.getInputconFile(),
-            //_forcings = new ForcingVariables( _confile.getInputconFile(),
             _ws.getActiveCells(_sitevars.getSiteVars().data()),
             _confile.getWsycorName(),
             _confile.getWsxcorName()
@@ -55,58 +96,60 @@ void ueb::BmiUEB::Initialize(std::string config_file) {
         int numTotalTs  = _confile.getModelTotalTimeSteps();
         int nstepinaDay = _confile.getStepsInADay();
 
+        if (numTotalTs <= 0 || nstepinaDay <= 0) {
+            LOG("UEB Initialize: static config timing is incomplete; using temporary allocation until ngen realization time is supplied through BMI.", LogLevel::INFO);
+            numTotalTs = 1;
+            nstepinaDay = 1;
+        }
+
+        {
+            std::stringstream ss_info;
+            ss_info << "UEB allocation sizes:" << std::endl;
+            ss_info << "  numActiveCells=" << numOfActiveCells << std::endl;
+            ss_info << "  numTotalTs=" << numTotalTs << std::endl;
+            ss_info << "  nstepinaDay=" << nstepinaDay << std::endl;
+            ss_info << "  numOut=" << numOut << std::endl;
+            LOG(ss_info.str(), LogLevel::INFO);
+        }
+
         _tsprevday.resize(numOfActiveCells);
         _taveprevday.resize(numOfActiveCells);
 
         float Us, Ws, Wc, Apr, cg, rhog, de, tave, WGT;
-        // WGT=WATER EQUIVALENT GLACIER THICKNESS
 
         auto Param = _parms.getParams();
 
         _outvarArray.resize(numOfActiveCells);
 
-        for (int cell = 0; cell < numOfActiveCells; ++cell) {
-            auto sitev     = this->getSitevForCell(cell);
-            auto SiteState = this->getSiteState(cell);
-            float ts_last  = SiteState[30];
+        for (int cell = 0; cell < numOfActiveCells; cell++) {
+            auto sitev = getSitevForCell(cell);
 
-            _Ws1[cell] = _statev[cell][1];
-            _Wc1[cell] = _statev[cell][3];
+            _tsprevday[cell].resize(nstepinaDay, 0.f);
+            _taveprevday[cell].resize(nstepinaDay, 0.f);
+
+            Us   = _statev[cell][0];
+            Ws   = _statev[cell][1];
+            Wc   = _statev[cell][3];
+            Apr  = sitev[1];
+            cg   = Param[3];
+            rhog = Param[7];
+            de   = Param[10];
 
             if (sitev[9] == 0 || sitev[9] == 3)
-                WGT = 0.0;
+                WGT = 0.0f;
             else
-                WGT = 1.0;
+                WGT = 1.0f;
 
-            if (sitev[9] != 3) //  Only do this work for non accumulation cells where model is run
-            {
-                _tsprevday[cell].resize(nstepinaDay, -9999.f);
-                _taveprevday[cell].resize(nstepinaDay, -9999.f);
-
-                // Take surface temperature as 0 where it is unknown the previous time step
-                // This is for first day of the model to get the force restore going
-                // #$#$#$#$#_is this all the time steps or the last time?
-                if (ts_last <= -9999)
-                    _tsprevday[cell][nstepinaDay - 1] = 0;
-                else
-                    _tsprevday[cell][nstepinaDay - 1] = ts_last;
-
-                // compute Ave.Temp for previous day
-                Us   = _statev[cell][0]; // Ub in UEB
-                Ws   = _statev[cell][1]; // W in UEB
-                Wc   = _statev[cell][3]; // Canopy SWE
-                Apr  = sitev[1]; // Atm. Pressure  [PR in UEB]
-                cg   = Param[3]; // Ground heat capacity [nominally 2.09 KJ/kg/C]
-                rhog = Param[7]; // Soil Density [nominally 1700 kg/m^3]
-                de   = Param[10]; // Thermally active depth of soil (0.1 m)
-
-                tave = TAVG(Us, Ws + WGT, Rho_w, C_s, T_0, rhog, de, cg, H_f);
-                _taveprevday[cell][nstepinaDay - 1] = tave;
-            }
+            tave = TAVG(Us, Ws + WGT, Rho_w, C_s, T_0, rhog, de, cg, H_f);
+            _taveprevday[cell][nstepinaDay - 1] = tave;
 
             _outvarArray[cell].resize(numOut);
             for (auto& v : _outvarArray[cell]) {
+                #ifdef UEB_SUPPRESS_OUTPUTS
+                v.resize(1);
+                #else
                 v.resize(numTotalTs);
+                #endif
             }
         }
     }
@@ -137,9 +180,14 @@ void ueb::BmiUEB::Update() {
 
     float Inpt[niv];
 
-    int istep = std::round(
-        (_currentModelDateTime - this->getUEBStartTime()) * 24 * 3600 / this->GetTimeStep()
-    );
+    int istep = this->get_istep();
+#ifdef UEB_SUPPRESS_OUTPUTS
+    // when suppressing outputs, outputs will be updated in plcae in the 1 sized output arrays
+    int ostep = 0;
+#else
+    // otherwise, outputs will go into the same index as the inputs step
+    int ostep = istep;
+#endif
 
     auto tsvarArray  = _forcings.getTsvarArray();
     auto forcingtype = _forcings.getStrinpforcArray();
@@ -249,7 +297,7 @@ void ueb::BmiUEB::Update() {
             ); // array of 53 elements, output
             this->updatOutVars(
                 cell, // input
-                istep, // input
+                ostep, // input
                 Year, // input
                 Month, // input
                 Day, // input
@@ -266,7 +314,7 @@ void ueb::BmiUEB::Update() {
         {
             errMB = 0.0;
             for (int i = 0; i < 53; i++) OutArr[i] = 0.0;
-            for (int i = 0; i < 70; i++) _outvarArray[cell][i][istep] = 0.0;
+            for (int i = 0; i < 70; i++) _outvarArray[cell][i][ostep] = 0.0;
         }
     }
 
@@ -277,7 +325,7 @@ void ueb::BmiUEB::Update() {
 void ueb::BmiUEB::UpdateUntil(double t) // t unit is in seconds since the start time
 {
     // convert days to seconds
-    double time = (_currentModelDateTime - this->getUEBStartTime()) * 24 * 3600;
+    double time = this->GetCurrentTime();
 
     double dt = this->GetTimeStep();
 
@@ -297,6 +345,7 @@ void ueb::BmiUEB::UpdateUntil(double t) // t unit is in seconds since the start 
 }
 
 void ueb::BmiUEB::Finalize() {
+#ifndef UEB_SUPPRESS_OUTPUTS
     //
     // Point outputs
     //
@@ -309,6 +358,7 @@ void ueb::BmiUEB::Finalize() {
     // NetCDF outputs
     //
     this->outputNcFiles();
+#endif
 
     // clean serialization
     this->clear_serialized();
@@ -317,6 +367,10 @@ void ueb::BmiUEB::Finalize() {
 int ueb::BmiUEB::GetVarGrid(std::string name) {
     int lastgrid                              = 0;
     std::array<sitevar, NSITEVARS> strsvArray = _sitevars.getSiteVars();
+
+    if (name == NGEN_REALIZATION_START_TIME || name == NGEN_REALIZATION_END_TIME || name == NGEN_REALIZATION_DT) {
+        return 0;
+    }
     for (int i = 0; i < ueb::SiteVariables::nsitevars; ++i) {
         if (strsvArray[i].svType == 1) {
             if (name.compare(strsvArray[i].svName) == 0) {
@@ -339,16 +393,20 @@ int ueb::BmiUEB::GetVarGrid(std::string name) {
 }
 
 std::string ueb::BmiUEB::GetVarType(std::string name) {
-    if (name.compare("serialization_create") == 0) {
-        return "uint64_t";
-    } else if (name.compare("serialization_size") == 0) {
-        return "uint64_t";
-    } else if (name.compare("serialization_state") == 0) {
-        return "char";
-    } else if (name.compare("serialization_free") == 0) {
-        return "int";
+    if (name == NGEN_REALIZATION_START_TIME || name == NGEN_REALIZATION_END_TIME || name == NGEN_REALIZATION_DT) {
+        return "double";
     }
-
+    else if (name.compare(SERIALIZATION_CREATE) == 0) {
+        return "uint64_t";
+    } else if (name.compare(SERIALIZATION_SIZE) == 0) {
+        return "uint64_t";
+    } else if (name.compare(SERIALIZATION_STATE) == 0) {
+        return "char";
+    } else if (name.compare(SERIALIZATION_FREE) == 0) {
+        return "int";
+    } else if (name.compare(RESET_TIME) == 0) {
+        return "double";
+    }
     auto it_site = std::find(
         ueb::SiteVariables::site_var_names.begin(),
         ueb::SiteVariables::site_var_names.end(),
@@ -399,14 +457,22 @@ std::string ueb::BmiUEB::GetVarType(std::string name) {
 }
 
 int ueb::BmiUEB::GetVarItemsize(std::string name) {
-    if (name.compare("serialization_create") == 0) {
+    if (name.compare(NGEN_REALIZATION_START_TIME) == 0 ||
+        name.compare(NGEN_REALIZATION_END_TIME) == 0 ||
+        name.compare(NGEN_REALIZATION_DT) == 0) {
+        return sizeof(double);
+    }
+
+    if (name.compare(SERIALIZATION_CREATE) == 0) {
         return sizeof(uint64_t);
-    } else if (name.compare("serialization_size") == 0) {
+    } else if (name.compare(SERIALIZATION_SIZE) == 0) {
         return sizeof(uint64_t);
-    } else if (name.compare("serialization_state") == 0) {
+    } else if (name.compare(SERIALIZATION_STATE) == 0) {
         return sizeof(char);
-    } else if (name.compare("serialization_free") == 0) {
+    } else if (name.compare(SERIALIZATION_FREE) == 0) {
         return sizeof(int);
+    } else if (name.compare(RESET_TIME) == 0) {
+        return sizeof(double);
     }
 
     auto it_site = std::find(
@@ -460,6 +526,12 @@ int ueb::BmiUEB::GetVarItemsize(std::string name) {
 
 std::string ueb::BmiUEB::GetVarUnits(std::string name) {
     auto it_site = ueb::SiteVariables::site_var_units.find(name);
+    if (name.compare(NGEN_REALIZATION_START_TIME) == 0 ||
+        name.compare(NGEN_REALIZATION_END_TIME) == 0 ||
+        name.compare(NGEN_REALIZATION_DT) == 0) {
+        return "s";
+    }
+
     if (it_site != ueb::SiteVariables::site_var_units.end()) {
         return it_site->second;
     }
@@ -480,14 +552,20 @@ std::string ueb::BmiUEB::GetVarUnits(std::string name) {
 }
 
 int ueb::BmiUEB::GetVarNbytes(std::string name) {
-    if (name.compare("serialization_create") == 0) {
+    if (name.compare(NGEN_REALIZATION_START_TIME) == 0 ||
+        name.compare(NGEN_REALIZATION_END_TIME) == 0 ||
+        name.compare(NGEN_REALIZATION_DT) == 0) {
+        return sizeof(double);
+    } else if (name.compare(SERIALIZATION_CREATE) == 0) {
         return sizeof(uint64_t);
-    } else if (name.compare("serialization_size") == 0) {
+    } else if (name.compare(SERIALIZATION_SIZE) == 0) {
         return sizeof(uint64_t);
-    } else if (name.compare("serialization_state") == 0) {
+    } else if (name.compare(SERIALIZATION_STATE) == 0) {
         return this->m_serialized_length;
-    } else if (name.compare("serialization_free") == 0) {
+    } else if (name.compare(SERIALIZATION_FREE) == 0) {
         return sizeof(int);
+    } else if (name.compare(RESET_TIME) == 0) {
+        return sizeof(double);
     }
 
     int itemsize;
@@ -646,7 +724,7 @@ void ueb::BmiUEB::GetValue(std::string name, void* dest) {
 
     src = this->GetValuePtr(name);
 
-    if (name.compare("serialiation_state") == 0) {
+    if (name.compare(SERIALIZATION_STATE) == 0) {
         std::memcpy(dest, src, this->m_serialized_length);
     } else {
         nbytes = this->GetVarNbytes(name);
@@ -656,10 +734,18 @@ void ueb::BmiUEB::GetValue(std::string name, void* dest) {
 
 void* ueb::BmiUEB::GetValuePtr(std::string name) {
     // special cases for serialization
-    if (name.compare("serialization_size") == 0) {
+    if (name.compare(SERIALIZATION_SIZE) == 0) {
         return (void*)&this->m_serialized_length;
-    } else if (name.compare("serialization_state") == 0) {
+    } else if (name.compare(SERIALIZATION_STATE) == 0) {
         return (void*)this->m_serialized.data();
+    }
+
+    if (name.compare(NGEN_REALIZATION_START_TIME) == 0) {
+        return (void*)&this->_ngen_realization_start_time;
+    } else if (name.compare(NGEN_REALIZATION_END_TIME) == 0) {
+        return (void*)&this->_ngen_realization_end_time;
+    } else if (name.compare(NGEN_REALIZATION_DT) == 0) {
+        return (void*)&this->_ngen_realization_dt;
     }
 
     auto it_par = std::find(
@@ -699,11 +785,7 @@ void* ueb::BmiUEB::GetValuePtr(std::string name) {
         int i = std::distance(ueb::ForcingVariables::forcing_var_names.begin(), it_forc);
         // SCTV and SVTV inputs
         if (strinpArray[i].infType == 0 || strinpArray[i].infType == 1) {
-            int istep = std::round(
-                            (_currentModelDateTime - this->getUEBStartTime()) * 24 * 3600 /
-                            this->GetTimeStep()
-                        ) -
-                        1;
+            int istep = this->get_istep() - 1;
 
             // Only set the value for the first cell
             // NGen wouldn't pass gradded values, only one value at a time
@@ -737,23 +819,74 @@ void* ueb::BmiUEB::GetValuePtr(std::string name) {
         return (void*)NULL;
     }
 
+
     auto it_out = std::find(
         ueb::OutControl::output_var_names.begin(),
         ueb::OutControl::output_var_names.end(),
         name
     );
+
     if (it_out != ueb::OutControl::output_var_names.end()) {
         int i = std::distance(ueb::OutControl::output_var_names.begin(), it_out);
-        int istep =
-            std::round(
-                (_currentModelDateTime - this->getUEBStartTime()) * 24 * 3600 / this->GetTimeStep()
-            ) -
-            1;
-        // need to check for gridded model
-        // this only return the first grid cell's value
-        // How about other grid cells?
-        return (void*)&_outvarArray[0][i][istep];
+
+  #ifdef UEB_SUPPRESS_OUTPUTS
+        int ostep = 0;
+  #else
+        int ostep = this->get_istep() - 1;
+  #endif
+
+        if (name.compare("SWE_kg_m2") == 0) {
+            auto swe_it = std::find(
+                ueb::OutControl::output_var_names.begin(),
+                ueb::OutControl::output_var_names.end(),
+                "SWE"
+            );
+
+            if (swe_it == ueb::OutControl::output_var_names.end()) {
+                return (void*)NULL;
+            }
+
+            int swe_i = std::distance(ueb::OutControl::output_var_names.begin(), swe_it);
+
+            /* UEB native SWE is water-equivalent depth in meters.
+             * NWM SNEQV expects mass per unit area in kg m-2.
+             *
+             * Conversion:
+             *   SWE_kg_m2 = SWE_m * rho_water
+             *             = SWE_m * 1000 kg m-3
+             *
+             * This is equivalent to the common shortcut that 1 mm water
+             * depth equals 1 kg m-2, but here the source value is meters,
+             * so the multiplier is 1000.
+             */
+            	    
+            _swe_kg_m2 = _outvarArray[0][swe_i][ostep] * 1000.0f;
+            return (void*)&_swe_kg_m2;
+        }
+
+        if (name.compare("SWIT_mm") == 0) {
+            auto swit_it = std::find(
+                ueb::OutControl::output_var_names.begin(),
+                ueb::OutControl::output_var_names.end(),
+                "SWIT"
+            );
+
+            if (swit_it == ueb::OutControl::output_var_names.end()) {
+                return (void*)NULL;
+            }
+
+            int swit_i = std::distance(ueb::OutControl::output_var_names.begin(), swit_it);
+            _swit_mm = _outvarArray[0][swit_i][ostep] *
+                       (float)(this->GetTimeStep() / 3600.0) *
+                       1000.0f;
+            return (void*)&_swit_mm;
+        }
+
+        if (i < numOut) {
+            return (void*)&_outvarArray[0][i][ostep];
+        }
     }
+
     return (void*)NULL;
 }
 
@@ -779,16 +912,35 @@ void ueb::BmiUEB::GetValueAtIndices(std::string name, void* dest, int* inds, int
 
 void ueb::BmiUEB::SetValue(std::string name, void* src) {
     // special cases for serialized state
-    if (name.compare("serialization_state") == 0) {
-        this->load_serialized((char*)src);
+
+    if (name.compare(NGEN_REALIZATION_START_TIME) == 0) {
+        _ngen_realization_start_time = *static_cast<double*>(src);
+        apply_ngen_realization_time();
         return;
-    } else if (name.compare("serialization_free") == 0) {
-        this->clear_serialized();
+    } else if (name.compare(NGEN_REALIZATION_END_TIME) == 0) {
+        _ngen_realization_end_time = *static_cast<double*>(src);
+        apply_ngen_realization_time();
         return;
-    } else if (name.compare("serialization_create") == 0) {
-        this->new_serialized();
+    } else if (name.compare(NGEN_REALIZATION_DT) == 0) {
+        _ngen_realization_dt = *static_cast<double*>(src);
+        apply_ngen_realization_time();
         return;
     }
+
+    if (name.compare(SERIALIZATION_STATE) == 0) {
+        this->load_serialized((char*)src);
+        return;
+    } else if (name.compare(SERIALIZATION_FREE) == 0) {
+        this->clear_serialized();
+        return;
+    } else if (name.compare(SERIALIZATION_CREATE) == 0) {
+        this->new_serialized();
+        return;
+    } else if (name.compare(RESET_TIME) == 0) {
+        this->reset_time();
+        return;
+    }
+
     void* dest = NULL;
 
     dest = this->GetValuePtr(name);
@@ -829,7 +981,7 @@ int ueb::BmiUEB::GetInputItemCount() {
     //  return Parameters::npar +
     //	  NSITEVARS +
     //          NFORCS;
-    return 8;
+    return 11;
 }
 
 int ueb::BmiUEB::GetOutputItemCount() {
@@ -853,6 +1005,10 @@ std::vector<std::string> ueb::BmiUEB::GetInputVarNames() {
     names.push_back("qair");
     names.push_back("uebv2d");
     names.push_back("uebu2d");
+
+    names.push_back(NGEN_REALIZATION_START_TIME);
+    names.push_back(NGEN_REALIZATION_END_TIME);
+    names.push_back(NGEN_REALIZATION_DT);
 
     // ngen check all input variables to see if there is
     // a provider. So here we can't list all input variables.
@@ -913,7 +1069,7 @@ double ueb::BmiUEB::GetEndTime() {
 
 double ueb::BmiUEB::GetCurrentTime() {
 
-    return (_currentModelDateTime - this->getUEBStartTime()) * 24 * 3600;
+    return (_currentModelDateTime - this->getUEBStartTime()) * (24 * 3600);
     // convert days to seconds;
 }
 
@@ -1517,6 +1673,7 @@ void ueb::BmiUEB::updatOutVars(
     }
 }
 
+#ifndef UEB_SUPPRESS_OUTPUTS
 void ueb::BmiUEB::outputAggregratedFiles() {
     auto activeCells = _ws.getActiveCells(_sitevars.getSiteVars().data());
 
@@ -1812,6 +1969,7 @@ void ueb::BmiUEB::outputPointFiles() {
         }
     }
 }
+#endif // not UEB_SUPPRESS_OUTPUTS
 
 //
 // Get the UEB start time, this is different form the GetStartTime API.
@@ -1836,6 +1994,139 @@ double ueb::BmiUEB::getUEBEndTime() {
     return EJD;
 }
 
+int ueb::BmiUEB::get_istep() {
+    return std::round(this->GetCurrentTime() / this->GetTimeStep());
+}
+
+void ueb::BmiUEB::reset_time() {
+    // set curernt time to what was specified in the config
+    _currentModelDateTime = this->getUEBStartTime();
+    // indexing into values seems to derive from _currentModelDateTime, so this should be the only thing that needs to be reset
+}
+
+void ueb::BmiUEB::apply_ngen_realization_time()
+{
+    if (this->realization_time_applied) {
+        return;
+    }
+
+    if (_ngen_realization_start_time <= 0.0 ||
+        _ngen_realization_end_time <= 0.0 ||
+        _ngen_realization_dt <= 0.0) {
+        return;
+    }
+
+    time_t start_t = static_cast<time_t>(_ngen_realization_start_time);
+    time_t end_t   = static_cast<time_t>(_ngen_realization_end_time);
+
+    struct tm start_tm_struct;
+    struct tm end_tm_struct;
+
+    gmtime_r(&start_t, &start_tm_struct);
+    gmtime_r(&end_t, &end_tm_struct);
+
+    int startYear  = start_tm_struct.tm_year + 1900;
+    int startMonth = start_tm_struct.tm_mon + 1;
+    int startDay   = start_tm_struct.tm_mday;
+    double startHour = start_tm_struct.tm_hour +
+                       start_tm_struct.tm_min / 60.0 +
+                       start_tm_struct.tm_sec / 3600.0;
+
+    int endYear  = end_tm_struct.tm_year + 1900;
+    int endMonth = end_tm_struct.tm_mon + 1;
+    int endDay   = end_tm_struct.tm_mday;
+    double endHour = end_tm_struct.tm_hour +
+                     end_tm_struct.tm_min / 60.0 +
+                     end_tm_struct.tm_sec / 3600.0;
+
+    double dt_hours = _ngen_realization_dt / 3600.0;
+
+    _confile.overrideModelTiming(
+        startYear, startMonth, startDay, startHour,
+        endYear,   endMonth,   endDay,   endHour,
+        dt_hours
+    );
+
+    this->reset_time();
+
+    int numTotalTs  = _confile.getModelTotalTimeSteps();
+    int nstepinaDay = _confile.getStepsInADay();
+
+    if (numTotalTs <= 0) {
+        throw std::runtime_error("UEB realization time produced numTotalTs <= 0");
+    }
+    if (nstepinaDay <= 0) {
+        throw std::runtime_error("UEB realization time produced nstepinaDay <= 0");
+    }
+
+    auto numOfActiveCells = _ws.getActiveCells(_sitevars.getSiteVars().data()).size();
+
+    _tsprevday.resize(numOfActiveCells);
+    _taveprevday.resize(numOfActiveCells);
+    _outvarArray.resize(numOfActiveCells);
+
+    float Us, Ws, Wc, Apr, cg, rhog, de, tave, WGT;
+
+    auto Param = _parms.getParams();
+
+    for (int cell = 0; cell < numOfActiveCells; cell++) {
+        auto sitev     = this->getSitevForCell(cell);
+        auto SiteState = this->getSiteState(cell);
+        float ts_last  = SiteState[30];
+
+        _Ws1[cell] = _statev[cell][1];
+        _Wc1[cell] = _statev[cell][3];
+
+        if (sitev[9] == 0 || sitev[9] == 3)
+            WGT = 0.0f;
+        else
+            WGT = 1.0f;
+
+        if (sitev[9] != 3) {
+            _tsprevday[cell].assign(nstepinaDay, -9999.f);
+            _taveprevday[cell].assign(nstepinaDay, -9999.f);
+
+            if (ts_last <= -9999)
+                _tsprevday[cell][nstepinaDay - 1] = 0;
+            else
+                _tsprevday[cell][nstepinaDay - 1] = ts_last;
+
+            Us   = _statev[cell][0];
+            Ws   = _statev[cell][1];
+            Wc   = _statev[cell][3];
+            Apr  = sitev[1];
+            cg   = Param[3];
+            rhog = Param[7];
+            de   = Param[10];
+
+            tave = TAVG(Us, Ws + WGT, Rho_w, C_s, T_0, rhog, de, cg, H_f);
+            _taveprevday[cell][nstepinaDay - 1] = tave;
+        }
+
+        _outvarArray[cell].resize(numOut);
+        for (auto& v : _outvarArray[cell]) {
+            #ifdef UEB_SUPPRESS_OUTPUTS
+            v.assign(1, 0.0f);
+            #else
+            v.assign(numTotalTs, 0.0f);
+            #endif
+        }
+    }
+
+    this->realization_time_applied = true;
+
+    {
+        std::stringstream ss;
+        ss << "UEB realization time applied:" << std::endl;
+        ss << "  startdate=" << startYear << "-" << startMonth << "-" << startDay << " " << startHour << std::endl;
+        ss << "  enddate=" << endYear << "-" << endMonth << "-" << endDay << " " << endHour << std::endl;
+        ss << "  dt_hours=" << dt_hours << std::endl;
+        ss << "  total_timesteps=" << numTotalTs << std::endl;
+        ss << "  steps_in_day=" << nstepinaDay << std::endl;
+        LOG(ss.str(), LogLevel::INFO);
+    }
+}
+
 template<class Archive>
 void ueb::BmiUEB::serialize(Archive& ar, const unsigned int version) {
     ar & this->_currentModelDateTime;
@@ -1857,13 +2148,17 @@ void ueb::BmiUEB::serialize(Archive& ar, const unsigned int version) {
     ar & this->_cumEg;
 }
 
-void ueb::BmiUEB::load_serialized(const char* data) {
-    std::stringstream stream(data);
+void ueb::BmiUEB::load_serialized(char* data) {
+    // get size from header of data
+    uint64_t size;
+    memcpy(&size, data, sizeof(uint64_t));
+    // create stream from data after the header
+    membuf stream(data + sizeof(uint64_t), size);
     boost::archive::binary_iarchive archive(stream);
     try {
         archive >> (*this);
     } catch (const std::exception &e) {
-        // Logger::Log(LogLevel::SEVERE, "Deserializing UEB encountered an error: %s", e.what());
+        // LOG(LogLevel::SEVERE, "Deserializing UEB encountered an error: %s", e.what());
         throw;
     }
     this->clear_serialized();
@@ -1876,13 +2171,17 @@ void ueb::BmiUEB::clear_serialized() {
 }
 
 void ueb::BmiUEB::new_serialized() {
-    this->m_serialized.clear();
+    // resize with room for a size of data header
+    this->m_serialized.resize(sizeof(uint64_t));
     boost::archive::binary_oarchive archive(this->m_serialized);
     try {
         archive << (*this);
         this->m_serialized_length = this->m_serialized.size();
+        // copy size of serialized data into the header
+        uint64_t serialized_size = this->m_serialized_length - sizeof(uint64_t);
+        memcpy(this->m_serialized.data(), &serialized_size, sizeof(uint64_t));
     } catch (const std::exception &e) {
-        // Logger::Log(LogLevel::SEVERE, "Serializing UEB encountered an error: %s", e.what());
+        // LOG(LogLevel::SEVERE, "Serializing UEB encountered an error: %s", e.what());
         this->m_serialized_length = 0;
         throw;
     }

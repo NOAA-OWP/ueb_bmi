@@ -122,13 +122,26 @@ void readSiteVars(const char *inpFile, sitevar *svArr) {
             sscanf(headerLine, "%s %s ", svArr[i].svFile, svArr[i].svVarName);
             break;
         default:
-            uebinputs_ss << "Wrong site variable type; has to be -1 (Use default values), 0 "
-                            "(single value) or 1 (2D netcdf)"
-                         << endl;
-            uebinputs_ss << "Using default value..." << endl;
-            LOG(uebinputs_ss.str(), LogLevel::SEVERE);
-            uebinputs_ss.str("");
-            svArr[i].svdefValue = vardefaults[i];
+            {
+                static int warned = 0;
+
+                if (warned == 0) {
+                    uebinputs_ss << "Wrong site variable type; has to be -1 (Use default values), 0 "
+                                    "(single value) or 1 (2D netcdf)"
+                                 << endl;
+                    uebinputs_ss << "Using default value..." << endl;
+                    LOG(uebinputs_ss.str(), LogLevel::SEVERE);
+                    uebinputs_ss.str("");
+                    warned = 1;
+                }
+                else if (warned == 1) {
+                    LOG(LogLevel::SEVERE,
+                        "Wrong site variable type occurred again; further warnings suppressed");
+                    warned = 2;
+                }
+
+                svArr[i].svdefValue = vardefaults[i];
+            }
         }
         // i++;
         // headerLine[0] = 0;
@@ -171,10 +184,24 @@ void readSiteVars(const char* inpFile, float svSValue[], char* svFile[], char* s
 				sscanf(headerLine,"%s %s",svFile[i],svVarName[i]);
 				break;			
 			default:
-				uebinputs_ss <<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)"<<endl;
-				uebinputs_ss <<"Using default value..."<<endl;
-				LOG(uebinputs_ss.str(), LogLevel::SEVERE); uebinputs_ss.str("");
-				break;       //exit 
+                        {
+                            static int warned = 0;
+
+                            if (warned == 0) {
+                                uebinputs_ss <<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)"<<endl;
+                                uebinputs_ss <<"Using default value..."<<endl;
+                                LOG(uebinputs_ss.str(), LogLevel::SEVERE);
+                                uebinputs_ss.str("");
+                                warned = 1;
+                            }
+                            else if (warned == 1) {
+                                LOG(LogLevel::SEVERE,
+                                    "Wrong site variable type occurred again; further warnings suppressed");
+                                warned = 2;
+                            }
+
+                            break;
+                        }
 			}
 			i++; //increment i
 			headerLine[0] = ' ';
