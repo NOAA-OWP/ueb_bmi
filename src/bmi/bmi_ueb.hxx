@@ -136,7 +136,7 @@ class BmiUEB : public bmi::Bmi {
 
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version);
-    vecbuf<char> m_serialized;
+    vecbuf m_serialized;
     uint64_t m_serialized_length; // needs stable location for GetValuePtr
     float _swe_kg_m2;
     float _swit_mm;
